@@ -1,4 +1,4 @@
-from nemo.collections.asr.models import EncDecRNNTBPEModel
+from nemo.collections.asr.models import ASRModel
 import yt_dlp as youtube_dl
 import os
 import tempfile
@@ -7,10 +7,10 @@ import gradio as gr
 from pydub import AudioSegment
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_NAME="nvidia/parakeet-rnnt-1.1b"
+MODEL_NAME="nvidia/parakeet-tdt-1.1b"
 YT_LENGTH_LIMIT_S=3600
 
-model = EncDecRNNTBPEModel.from_pretrained(model_name=MODEL_NAME).to(device)
+model = ASRModel.from_pretrained(model_name=MODEL_NAME).to(device)
 model.eval()
 
 def get_transcripts(audio_path):
@@ -19,8 +19,8 @@ def get_transcripts(audio_path):
 
 article = (
     "<p style='text-align: center'>"
-    "<a href='https://huggingface.co/nvidia/parakeet-rnnt-1.1b' target='_blank'>🎙️ Learn more about Parakeet model</a> | "
-    "<a href='https://arxiv.org/abs/2305.05084' target='_blank'>📚 FastConformer paper</a> | "
+    "<a href='https://huggingface.co/nvidia/parakeet-tdt-1.1b' target='_blank'>🎙️ Learn more about Parakeet TDT model</a> | "
+    "<a href='https://arxiv.org/abs/2304.06795' target='_blank'>📚 TDT ICML paper</a> | "
     "<a href='https://github.com/NVIDIA/NeMo' target='_blank'>🧑‍💻 Repository</a>"
     "</p>"
 )
@@ -92,11 +92,11 @@ mf_transcribe = gr.Interface(
     ],
     outputs="text",
     theme="huggingface",
-    title="Parakeet RNNT 1.1B: Transcribe Audio",
+    title="Parakeet TDT 1.1B: Transcribe Audio",
     description=(
         "Transcribe microphone or audio inputs with the click of a button! Demo uses the"
         f" checkpoint [{MODEL_NAME}](https://huggingface.co/{MODEL_NAME}) and [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) to transcribe audio files"
-        " of arbitrary length."
+        " of arbitrary length. TDT models are 75% more efficient than similar size RNNT model"
     ),
     allow_flagging="never",
 )
@@ -108,11 +108,11 @@ file_transcribe = gr.Interface(
     ],
     outputs="text",
     theme="huggingface",
-    title="Parakeet RNNT 1.1B: Transcribe Audio",
+    title="Parakeet TDT 1.1B: Transcribe Audio",
     description=(
         "Transcribe microphone or audio inputs with the click of a button! Demo uses the"
         f" checkpoint [{MODEL_NAME}](https://huggingface.co/{MODEL_NAME}) and [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) to transcribe audio files"
-        " of arbitrary length."
+        " of arbitrary length. TDT models are 75% more efficient than similar size RNNT model"
     ),
     allow_flagging="never",
 )
@@ -124,11 +124,11 @@ youtube_transcribe = gr.Interface(
     ],
     outputs=["html", "text"],
     theme="huggingface",
-    title="Parakeet RNNT 1.1B: Transcribe Audio",
+    title="Parakeet TDT 1.1B: Transcribe Audio",
     description=(
         "Transcribe microphone or audio inputs with the click of a button! Demo uses the"
         f" checkpoint [{MODEL_NAME}](https://huggingface.co/{MODEL_NAME}) and [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) to transcribe audio files"
-        " of arbitrary length."
+        " of arbitrary length. TDT models are 75% more efficient than similar size RNNT model"
     ),
     allow_flagging="never",
 )
