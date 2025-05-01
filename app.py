@@ -240,7 +240,7 @@ article = (
     "    <li>Automatic punctuation and capitalization</li>"
     "    <li>Accurate word-level timestamps (click on a segment in the table below to play it!)</li>"
     "    <li>Efficiently transcribes long audio segments (up to 20 minutes) <small>(For even longer audios, see <a href='https://github.com/NVIDIA/NeMo/blob/main/examples/asr/asr_chunked_inference/rnnt/speech_to_text_buffered_infer_rnnt.py' target='_blank'>this script</a>)</small></li>"
-    "    <li>Robust performance on spoken numbers, music, and song lyrics transcription </li>"
+    "    <li>Robust performance on spoken numbers, and song lyrics transcription </li>"
     "</ul>"
     "<p style='font-size: 1.1em;'>"
     "This model is <strong>available for commercial and non-commercial use</strong>."
