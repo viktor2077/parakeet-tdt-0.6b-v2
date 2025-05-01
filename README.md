@@ -1,7 +1,7 @@
 ---
-title: Parakeet TDT 1.1b
+title: Parakeet-TDT-0.6b-V2
 emoji: "\_🦜"
-colorFrom: red
+colorFrom: green
 colorTo: red
 sdk: gradio
 sdk_version: 5.27.1
