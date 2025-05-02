@@ -3,11 +3,11 @@ import torch
 import gradio as gr
 import spaces
 import gc
+import shutil
 from pathlib import Path
 from pydub import AudioSegment
 import numpy as np
 import os
-import tempfile
 import gradio.themes as gr_themes
 import csv
 
@@ -16,6 +16,24 @@ MODEL_NAME="nvidia/parakeet-tdt-0.6b-v2"
 
 model = ASRModel.from_pretrained(model_name=MODEL_NAME)
 model.eval()
+
+
+def start_session(request: gr.Request):
+    session_hash = request.session_hash
+    session_dir = Path(f'/tmp/{session_hash}')
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Session with hash {session_hash} started.")
+    return session_dir.as_posix()
+
+def end_session(request: gr.Request):
+    session_hash = request.session_hash
+    session_dir = Path(f'/tmp/{session_hash}')
+    
+    if session_dir.exists():
+        shutil.rmtree(session_dir)
+
+    print(f"Session with hash {session_hash} ended.")
 
 def get_audio_segment(audio_path, start_second, end_second):
     if not audio_path or not Path(audio_path).exists():
@@ -55,7 +73,7 @@ def get_audio_segment(audio_path, start_second, end_second):
         return None
 
 @spaces.GPU
-def get_transcripts_and_raw_times(audio_path):
+def get_transcripts_and_raw_times(audio_path, session_dir):
     if not audio_path:
         gr.Error("No audio file path provided for transcription.", duration=None)
         # Return an update to hide the button
@@ -64,9 +82,9 @@ def get_transcripts_and_raw_times(audio_path):
     vis_data = [["N/A", "N/A", "Processing failed"]]
     raw_times_data = [[0.0, 0.0]]
     processed_audio_path = None
-    temp_file = None
     csv_file_path = None
     original_path_name = Path(audio_path).name
+    audio_name = Path(audio_path).stem
 
     try:
         try:
@@ -105,16 +123,14 @@ def get_transcripts_and_raw_times(audio_path):
 
         if resampled or mono:
             try:
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-                audio.export(temp_file.name, format="wav")
-                processed_audio_path = temp_file.name
-                temp_file.close()
-                transcribe_path = processed_audio_path
+                processed_audio_path = Path(session_dir, f"{audio_name}_resampled.wav")
+                audio.export(processed_audio_path, format="wav")
+                transcribe_path = processed_audio_path.as_posix()
                 info_path_name = f"{original_path_name} (processed)"
             except Exception as export_e:
                 gr.Error(f"Failed to export processed audio: {export_e}", duration=None)
-                if temp_file and hasattr(temp_file, 'name') and os.path.exists(temp_file.name): # Check temp_file has 'name' attribute
-                    os.remove(temp_file.name)
+                if processed_audio_path and os.path.exists(processed_audio_path):
+                    os.remove(processed_audio_path)
                 # Return an update to hide the button
                 return [["Error", "Error", "Export failed"]], [[0.0, 0.0]], audio_path, gr.DownloadButton(visible=False)
         else:
@@ -139,12 +155,10 @@ def get_transcripts_and_raw_times(audio_path):
             # Default button update (hidden) in case CSV writing fails
             button_update = gr.DownloadButton(visible=False)
             try:
-                temp_csv_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode='w', newline='', encoding='utf-8')
-                writer = csv.writer(temp_csv_file)
+                csv_file_path = Path(session_dir, f"transcription_{audio_name}.csv")
+                writer = csv.writer(open(csv_file_path, 'w'))
                 writer.writerow(csv_headers)
                 writer.writerows(vis_data)
-                csv_file_path = temp_csv_file.name
-                temp_csv_file.close()
                 print(f"CSV transcript saved to temporary file: {csv_file_path}")
                 # If CSV is saved, create update to show button with path
                 button_update = gr.DownloadButton(value=csv_file_path, visible=True)
@@ -285,6 +299,9 @@ with gr.Blocks(theme=nvidia_theme) as demo:
     current_audio_path_state = gr.State(None)
     raw_timestamps_list_state = gr.State([])
 
+    session_dir = gr.State()
+    demo.load(start_session, outputs=[session_dir])
+
     with gr.Tabs():
         with gr.TabItem("Audio File"):
             file_input = gr.Audio(sources=["upload"], type="filepath", label="Upload Audio File")
@@ -313,14 +330,14 @@ with gr.Blocks(theme=nvidia_theme) as demo:
 
     mic_transcribe_btn.click(
         fn=get_transcripts_and_raw_times,
-        inputs=[mic_input],
+        inputs=[mic_input, session_dir],
         outputs=[vis_timestamps_df, raw_timestamps_list_state, current_audio_path_state, download_btn],
         api_name="transcribe_mic"
     )
 
     file_transcribe_btn.click(
         fn=get_transcripts_and_raw_times,
-        inputs=[file_input],
+        inputs=[file_input, session_dir],
         outputs=[vis_timestamps_df, raw_timestamps_list_state, current_audio_path_state, download_btn],
         api_name="transcribe_file"
     )
@@ -330,6 +347,8 @@ with gr.Blocks(theme=nvidia_theme) as demo:
         inputs=[raw_timestamps_list_state, current_audio_path_state],
         outputs=[selected_segment_player],
     )
+
+    demo.unload(end_session)
 
 if __name__ == "__main__":
     print("Launching Gradio Demo...")
