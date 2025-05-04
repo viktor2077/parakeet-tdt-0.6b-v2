@@ -90,6 +90,7 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
         try:
             gr.Info(f"Loading audio: {original_path_name}", duration=2)
             audio = AudioSegment.from_file(audio_path)
+            duration_sec = audio.duration_seconds
         except Exception as load_e:
             gr.Error(f"Failed to load audio file {original_path_name}: {load_e}", duration=None)
             # Return an update to hide the button
@@ -137,9 +138,27 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
             transcribe_path = audio_path
             info_path_name = original_path_name
 
+        # Flag to track if long audio settings were applied
+        long_audio_settings_applied = False
         try:
             model.to(device)
+            model.to(torch.float32)
             gr.Info(f"Transcribing {info_path_name} on {device}...", duration=2)
+
+            # Check duration and apply specific settings for long audio
+            if duration_sec > 900: # 15 minutes
+                try:
+                    gr.Info("Audio longer than 15 minutes. Applying optimized settings for long transcription.", duration=3)
+                    print("Applying long audio settings: Local Attention and Chunking.")
+                    model.change_attention_model("rel_pos_local_attn", [256,256])
+                    model.change_subsampling_conv_chunking_factor(1)  # 1 = auto select
+                    long_audio_settings_applied = True
+                except Exception as setting_e:
+                    gr.Warning(f"Could not apply long audio settings: {setting_e}", duration=5)
+                    print(f"Warning: Failed to apply long audio settings: {setting_e}")
+                    # Proceed without long audio settings if applying them failed
+            
+            model.to(torch.bfloat16)
             output = model.transcribe([transcribe_path], timestamps=True)
 
             if not output or not isinstance(output, list) or not output[0] or not hasattr(output[0], 'timestamp') or not output[0].timestamp or 'segment' not in output[0].timestamp:
@@ -194,7 +213,20 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
             # Return an update to hide the button
             return vis_data, raw_times_data, audio_path, gr.DownloadButton(visible=False)
         finally:
+            # --- Model Cleanup ---
             try:
+                # Revert settings if they were applied for long audio
+                if long_audio_settings_applied:
+                    try:
+                        print("Reverting long audio settings.")
+                        model.change_attention_model("rel_pos", [-1,-1]) 
+                        model.change_subsampling_conv_chunking_factor(-1)
+                        long_audio_settings_applied = False # Reset flag
+                    except Exception as revert_e:
+                        print(f"Warning: Failed to revert long audio settings: {revert_e}")
+                        gr.Warning(f"Issue reverting model settings after long transcription: {revert_e}", duration=5)
+
+                # Original cleanup
                 if 'model' in locals() and hasattr(model, 'cpu'):
                      if device == 'cuda':
                           model.cpu()
@@ -204,6 +236,7 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
             except Exception as cleanup_e:
                 print(f"Error during model cleanup: {cleanup_e}")
                 gr.Warning(f"Issue during model cleanup: {cleanup_e}", duration=5)
+            # --- End Model Cleanup ---
 
     finally:
         if processed_audio_path and os.path.exists(processed_audio_path):
@@ -253,7 +286,7 @@ article = (
     "<ul style='font-size: 1.1em;'>"
     "    <li>Automatic punctuation and capitalization</li>"
     "    <li>Accurate word-level timestamps (click on a segment in the table below to play it!)</li>"
-    "    <li>Efficiently transcribes long audio segments (up to 20 minutes) <small>(For even longer audios, see <a href='https://github.com/NVIDIA/NeMo/blob/main/examples/asr/asr_chunked_inference/rnnt/speech_to_text_buffered_infer_rnnt.py' target='_blank'>this script</a>)</small></li>"
+    "    <li>Efficiently transcribes long audio segments (<strong>updated to support upto 3 hours</strong>) <small>(For even longer audios, see <a href='https://github.com/NVIDIA/NeMo/blob/main/examples/asr/asr_chunked_inference/rnnt/speech_to_text_buffered_infer_rnnt.py' target='_blank'>this script</a>)</small></li>"
     "    <li>Robust performance on spoken numbers, and song lyrics transcription </li>"
     "</ul>"
     "<p style='font-size: 1.1em;'>"
