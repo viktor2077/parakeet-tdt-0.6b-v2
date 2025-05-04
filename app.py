@@ -219,7 +219,7 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
                 if long_audio_settings_applied:
                     try:
                         print("Reverting long audio settings.")
-                        model.change_attention_model("rel_pos", [-1,-1]) 
+                        model.change_attention_model("rel_pos") 
                         model.change_subsampling_conv_chunking_factor(-1)
                         long_audio_settings_applied = False # Reset flag
                     except Exception as revert_e:
