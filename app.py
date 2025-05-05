@@ -146,9 +146,9 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
             gr.Info(f"Transcribing {info_path_name} on {device}...", duration=2)
 
             # Check duration and apply specific settings for long audio
-            if duration_sec > 900: # 15 minutes
+            if duration_sec > 480 : # 8 minutes
                 try:
-                    gr.Info("Audio longer than 15 minutes. Applying optimized settings for long transcription.", duration=3)
+                    gr.Info("Audio longer than 8 minutes. Applying optimized settings for long transcription.", duration=3)
                     print("Applying long audio settings: Local Attention and Chunking.")
                     model.change_attention_model("rel_pos_local_attn", [256,256])
                     model.change_subsampling_conv_chunking_factor(1)  # 1 = auto select
