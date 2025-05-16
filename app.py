@@ -10,6 +10,7 @@ import numpy as np
 import os
 import gradio.themes as gr_themes
 import csv
+import datetime
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 MODEL_NAME="nvidia/parakeet-tdt-0.6b-v2"
@@ -72,19 +73,51 @@ def get_audio_segment(audio_path, start_second, end_second):
         print(f"Error clipping audio {audio_path} from {start_second}s to {end_second}s: {e}")
         return None
 
+def format_srt_time(seconds: float) -> str:
+    """Converts seconds to SRT time format HH:MM:SS,mmm using datetime.timedelta"""
+    sanitized_total_seconds = max(0.0, seconds)
+    delta = datetime.timedelta(seconds=sanitized_total_seconds)
+    total_int_seconds = int(delta.total_seconds())
+
+    hours = total_int_seconds // 3600
+    remainder_seconds_after_hours = total_int_seconds % 3600
+    minutes = remainder_seconds_after_hours // 60
+    seconds_part = remainder_seconds_after_hours % 60
+    milliseconds = delta.microseconds // 1000
+
+    return f"{hours:02d}:{minutes:02d}:{seconds_part:02d},{milliseconds:03d}"
+
+def generate_srt_content(segment_timestamps: list) -> str:
+    """Generates SRT formatted string from segment timestamps."""
+    srt_content = []
+    for i, ts in enumerate(segment_timestamps):
+        start_time = format_srt_time(ts['start'])
+        end_time = format_srt_time(ts['end'])
+        text = ts['segment']
+        srt_content.append(str(i + 1))
+        srt_content.append(f"{start_time} --> {end_time}")
+        srt_content.append(text)
+        srt_content.append("")
+    return "\n".join(srt_content)
+
 @spaces.GPU
 def get_transcripts_and_raw_times(audio_path, session_dir):
     if not audio_path:
         gr.Error("No audio file path provided for transcription.", duration=None)
-        # Return an update to hide the button
-        return [], [], None, gr.DownloadButton(visible=False)
+        # Return an update to hide the buttons
+        return [], [], None, gr.DownloadButton(label="Download Transcript (CSV)", visible=False), gr.DownloadButton(label="Download Transcript (SRT)", visible=False)
 
     vis_data = [["N/A", "N/A", "Processing failed"]]
     raw_times_data = [[0.0, 0.0]]
     processed_audio_path = None
     csv_file_path = None
+    srt_file_path = None
     original_path_name = Path(audio_path).name
     audio_name = Path(audio_path).stem
+
+    # Initialize button states
+    csv_button_update = gr.DownloadButton(label="Download Transcript (CSV)", visible=False)
+    srt_button_update = gr.DownloadButton(label="Download Transcript (SRT)", visible=False)
 
     try:
         try:
@@ -93,8 +126,7 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
             duration_sec = audio.duration_seconds
         except Exception as load_e:
             gr.Error(f"Failed to load audio file {original_path_name}: {load_e}", duration=None)
-            # Return an update to hide the button
-            return [["Error", "Error", "Load failed"]], [[0.0, 0.0]], audio_path, gr.DownloadButton(visible=False)
+            return [["Error", "Error", "Load failed"]], [[0.0, 0.0]], audio_path, csv_button_update, srt_button_update
 
         resampled = False
         mono = False
@@ -106,8 +138,7 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
                 resampled = True
             except Exception as resample_e:
                  gr.Error(f"Failed to resample audio: {resample_e}", duration=None)
-                 # Return an update to hide the button
-                 return [["Error", "Error", "Resample failed"]], [[0.0, 0.0]], audio_path, gr.DownloadButton(visible=False)
+                 return [["Error", "Error", "Resample failed"]], [[0.0, 0.0]], audio_path, csv_button_update, srt_button_update
 
         if audio.channels == 2:
             try:
@@ -115,12 +146,10 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
                 mono = True
             except Exception as mono_e:
                  gr.Error(f"Failed to convert audio to mono: {mono_e}", duration=None)
-                 # Return an update to hide the button
-                 return [["Error", "Error", "Mono conversion failed"]], [[0.0, 0.0]], audio_path, gr.DownloadButton(visible=False)
+                 return [["Error", "Error", "Mono conversion failed"]], [[0.0, 0.0]], audio_path, csv_button_update, srt_button_update
         elif audio.channels > 2:
              gr.Error(f"Audio has {audio.channels} channels. Only mono (1) or stereo (2) supported.", duration=None)
-             # Return an update to hide the button
-             return [["Error", "Error", f"{audio.channels}-channel audio not supported"]], [[0.0, 0.0]], audio_path, gr.DownloadButton(visible=False)
+             return [["Error", "Error", f"{audio.channels}-channel audio not supported"]], [[0.0, 0.0]], audio_path, csv_button_update, srt_button_update
 
         if resampled or mono:
             try:
@@ -132,8 +161,7 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
                 gr.Error(f"Failed to export processed audio: {export_e}", duration=None)
                 if processed_audio_path and os.path.exists(processed_audio_path):
                     os.remove(processed_audio_path)
-                # Return an update to hide the button
-                return [["Error", "Error", "Export failed"]], [[0.0, 0.0]], audio_path, gr.DownloadButton(visible=False)
+                return [["Error", "Error", "Export failed"]], [[0.0, 0.0]], audio_path, csv_button_update, srt_button_update
         else:
             transcribe_path = audio_path
             info_path_name = original_path_name
@@ -163,46 +191,52 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
 
             if not output or not isinstance(output, list) or not output[0] or not hasattr(output[0], 'timestamp') or not output[0].timestamp or 'segment' not in output[0].timestamp:
                  gr.Error("Transcription failed or produced unexpected output format.", duration=None)
-                 # Return an update to hide the button
-                 return [["Error", "Error", "Transcription Format Issue"]], [[0.0, 0.0]], audio_path, gr.DownloadButton(visible=False)
+                 # Return an update to hide the buttons
+                 return [["Error", "Error", "Transcription Format Issue"]], [[0.0, 0.0]], audio_path, csv_button_update, srt_button_update
 
             segment_timestamps = output[0].timestamp['segment']
             csv_headers = ["Start (s)", "End (s)", "Segment"]
             vis_data = [[f"{ts['start']:.2f}", f"{ts['end']:.2f}", ts['segment']] for ts in segment_timestamps]
             raw_times_data = [[ts['start'], ts['end']] for ts in segment_timestamps]
 
-            # Default button update (hidden) in case CSV writing fails
-            button_update = gr.DownloadButton(visible=False)
+            # CSV file generation
             try:
                 csv_file_path = Path(session_dir, f"transcription_{audio_name}.csv")
                 writer = csv.writer(open(csv_file_path, 'w'))
                 writer.writerow(csv_headers)
                 writer.writerows(vis_data)
                 print(f"CSV transcript saved to temporary file: {csv_file_path}")
-                # If CSV is saved, create update to show button with path
-                button_update = gr.DownloadButton(value=csv_file_path, visible=True)
+                csv_button_update = gr.DownloadButton(value=csv_file_path, visible=True, label="Download Transcript (CSV)")
             except Exception as csv_e:
                 gr.Error(f"Failed to create transcript CSV file: {csv_e}", duration=None)
                 print(f"Error writing CSV: {csv_e}")
-                # csv_file_path remains None, button_update remains hidden
+
+            if segment_timestamps:
+                try:
+                    srt_content = generate_srt_content(segment_timestamps)
+                    srt_file_path = Path(session_dir, f"transcription_{audio_name}.srt")
+                    with open(srt_file_path, 'w', encoding='utf-8') as f:
+                        f.write(srt_content)
+                    print(f"SRT transcript saved to temporary file: {srt_file_path}")
+                    srt_button_update = gr.DownloadButton(value=srt_file_path, visible=True, label="Download Transcript (SRT)")
+                except Exception as srt_e:
+                    gr.Warning(f"Failed to create transcript SRT file: {srt_e}", duration=5)
+                    print(f"Error writing SRT: {srt_e}")
 
             gr.Info("Transcription complete.", duration=2)
-            # Return the data and the button update dictionary
-            return vis_data, raw_times_data, audio_path, button_update
+            return vis_data, raw_times_data, audio_path, csv_button_update, srt_button_update
 
         except torch.cuda.OutOfMemoryError as e:
             error_msg = 'CUDA out of memory. Please try a shorter audio or reduce GPU load.'
             print(f"CUDA OutOfMemoryError: {e}")
             gr.Error(error_msg, duration=None)
-            # Return an update to hide the button
-            return [["OOM", "OOM", error_msg]], [[0.0, 0.0]], audio_path, gr.DownloadButton(visible=False)
+            return [["OOM", "OOM", error_msg]], [[0.0, 0.0]], audio_path, csv_button_update, srt_button_update
 
         except FileNotFoundError:
             error_msg = f"Audio file for transcription not found: {Path(transcribe_path).name}."
             print(f"Error: Transcribe audio file not found at path: {transcribe_path}")
             gr.Error(error_msg, duration=None)
-            # Return an update to hide the button
-            return [["Error", "Error", "File not found for transcription"]], [[0.0, 0.0]], audio_path, gr.DownloadButton(visible=False)
+            return [["Error", "Error", "File not found for transcription"]], [[0.0, 0.0]], audio_path, csv_button_update, srt_button_update
 
         except Exception as e:
             error_msg = f"Transcription failed: {e}"
@@ -210,8 +244,7 @@ def get_transcripts_and_raw_times(audio_path, session_dir):
             gr.Error(error_msg, duration=None)
             vis_data = [["Error", "Error", error_msg]]
             raw_times_data = [[0.0, 0.0]]
-            # Return an update to hide the button
-            return vis_data, raw_times_data, audio_path, gr.DownloadButton(visible=False)
+            return vis_data, raw_times_data, audio_path, csv_button_update, srt_button_update
         finally:
             # --- Model Cleanup ---
             try:
@@ -349,7 +382,9 @@ with gr.Blocks(theme=nvidia_theme) as demo:
     gr.Markdown("<p><strong style='color: #FF0000; font-size: 1.2em;'>Transcription Results (Click row to play segment)</strong></p>")
 
     # Define the DownloadButton *before* the DataFrame
-    download_btn = gr.DownloadButton(label="Download Transcript (CSV)", visible=False)
+    with gr.Row():
+        download_btn_csv = gr.DownloadButton(label="Download Transcript (CSV)", visible=False)
+        download_btn_srt = gr.DownloadButton(label="Download Transcript (SRT)", visible=False)
 
     vis_timestamps_df = gr.DataFrame(
         headers=["Start (s)", "End (s)", "Segment"],
@@ -364,14 +399,14 @@ with gr.Blocks(theme=nvidia_theme) as demo:
     mic_transcribe_btn.click(
         fn=get_transcripts_and_raw_times,
         inputs=[mic_input, session_dir],
-        outputs=[vis_timestamps_df, raw_timestamps_list_state, current_audio_path_state, download_btn],
+        outputs=[vis_timestamps_df, raw_timestamps_list_state, current_audio_path_state, download_btn_csv, download_btn_srt],
         api_name="transcribe_mic"
     )
 
     file_transcribe_btn.click(
         fn=get_transcripts_and_raw_times,
         inputs=[file_input, session_dir],
-        outputs=[vis_timestamps_df, raw_timestamps_list_state, current_audio_path_state, download_btn],
+        outputs=[vis_timestamps_df, raw_timestamps_list_state, current_audio_path_state, download_btn_csv, download_btn_srt],
         api_name="transcribe_file"
     )
 
