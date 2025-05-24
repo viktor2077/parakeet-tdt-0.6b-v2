@@ -7,3 +7,4 @@ nemo-toolkit[asr]
 pydub==0.25.1
 numpy>=1.21.0
 requests>=2.25.0
+cuda-python>=12.3
