@@ -1,3 +1,10 @@
-Cython
-git+https://github.com/NVIDIA/NeMo.git@main#egg=nemo_toolkit[asr]
-numpy<2.0
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic==2.5.0
+torch>=2.0.0
+nemo-toolkit[asr]
+pydub==0.25.1
+numpy>=1.21.0
+pathlib
+python-magic-bin==0.4.14

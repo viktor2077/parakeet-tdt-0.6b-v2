@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  speech-transcription-api:
+    build: .
+    container_name: speech-transcription-api
+    ports:
+      - "8000:8000"
+    environment:
+      - CUDA_VISIBLE_DEVICES=0  # Specify GPU device
+    volumes:
+      - ./data:/app/data  # Mount data directory for audio files
+      - model_cache:/root/.cache  # Cache model files
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  model_cache: 
