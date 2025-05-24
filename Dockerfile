@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.8-devel-ubuntu20.04
+FROM nvidia/cuda:12.9.0-cudnn-devel-ubuntu24.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -10,19 +10,23 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-dev \
+    python3-venv \
     ffmpeg \
     libsndfile1 \
     git \
     wget \
     curl \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Create working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Copy requirements first for better caching
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Install dependencies with break-system-packages flag (skip pip upgrade)
+RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
 
 # Copy application code
 COPY app.py .

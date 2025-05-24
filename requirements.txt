@@ -6,5 +6,4 @@ torch>=2.0.0
 nemo-toolkit[asr]
 pydub==0.25.1
 numpy>=1.21.0
-pathlib
-python-magic-bin==0.4.14
+requests>=2.25.0
