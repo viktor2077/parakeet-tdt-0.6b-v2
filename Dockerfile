@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.9.0-cudnn-devel-ubuntu24.04
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y \
     python3-venv \
     ffmpeg \
     libsndfile1 \
+    sox \
+    libsox-dev \
     git \
     wget \
     curl \
@@ -25,8 +27,10 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install dependencies with break-system-packages flag (skip pip upgrade)
-RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
+# Upgrade pip and install basic dependencies first, then requirements
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir numpy>=1.21.0 typing_extensions && \
+    pip3 install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app.py .
